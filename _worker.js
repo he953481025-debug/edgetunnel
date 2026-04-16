@@ -415,6 +415,13 @@ export default {
 						}
 						return new Response(订阅内容, { status: 200, headers: responseHeaders });
 					}
+				} else if (访问路径 === 'cdn-cgi/trace') {// 代理 trace 检测，避免前端跨域失败
+					return fetch(new Request(`https://speed.cloudflare.com/cdn-cgi/trace${url.search}`, {
+						headers: {
+							'Referer': 'https://speed.cloudflare.com/',
+							'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0'
+						}
+					}));
 				} else if (访问路径 === 'locations') {//反代locations列表
 					const cookies = request.headers.get('Cookie') || '';
 					const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
