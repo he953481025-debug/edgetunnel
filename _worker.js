@@ -10,17 +10,18 @@ let SOCKS5白名单 = ['*tapecontent.net', '*cloudatacdn.com', '*loadshare.org',
 async function 获取静态资源响应(env, request, 静态路径 = '/', 状态码 = 200) {
 	const 目标URL = new URL(静态路径, request.url);
 	if (env.ASSETS && typeof env.ASSETS.fetch === 'function') {
-		const 静态响应 = await env.ASSETS.fetch(new Request(目标URL.toString(), {
-			method: 'GET',
-			headers: request.headers
-		}));
-		const headers = new Headers(静态响应.headers);
-		if (状态码 !== 200) {
-			headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-			headers.set('Pragma', 'no-cache');
-			headers.set('Expires', '0');
+		try {
+			const 静态响应 = await env.ASSETS.fetch(new Request(目标URL.toString(), { method: 'GET' }));
+			const headers = new Headers(静态响应.headers);
+			if (状态码 !== 200) {
+				headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+				headers.set('Pragma', 'no-cache');
+				headers.set('Expires', '0');
+			}
+			return new Response(静态响应.body, { status: 状态码 || 静态响应.status, statusText: 静态响应.statusText, headers });
+		} catch (error) {
+			console.error(`[静态资源] 读取失败: ${目标URL.pathname} - ${error.message}`);
 		}
-		return new Response(静态响应.body, { status: 状态码 || 静态响应.status, statusText: 静态响应.statusText, headers });
 	}
 
 	const Pages静态页面 = 'https://edt-pages.github.io';
@@ -416,12 +417,17 @@ export default {
 						return new Response(订阅内容, { status: 200, headers: responseHeaders });
 					}
 				} else if (访问路径 === 'cdn-cgi/trace') {// 代理 trace 检测，避免前端跨域失败
-					return fetch(new Request(`https://speed.cloudflare.com/cdn-cgi/trace${url.search}`, {
-						headers: {
-							'Referer': 'https://speed.cloudflare.com/',
-							'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0'
-						}
-					}));
+					try {
+						return await fetch(new Request(`https://speed.cloudflare.com/cdn-cgi/trace${url.search}`, {
+							headers: {
+								'Referer': 'https://speed.cloudflare.com/',
+								'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0'
+							}
+						}));
+					} catch (error) {
+						console.error(`[Trace代理] 请求失败: ${error.message}`);
+						return 获取静态资源响应(env, request, '/cdn-cgi/trace');
+					}
 				} else if (访问路径 === 'locations') {//反代locations列表
 					const cookies = request.headers.get('Cookie') || '';
 					const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];

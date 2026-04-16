@@ -15126,6 +15126,14 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
             };
         }
 
+        function applySelectedRegionResults(region, count = 16) {
+            const regionResults = Array.isArray(optimizeResults[region]) ? optimizeResults[region] : [];
+            optimizeResults = {
+                [region]: regionResults.slice(0, Math.max(1, count))
+            };
+            currentSelectedCountry = region;
+        }
+
         async function startRegionOptimize(region, count) {
             console.log(`[在线优选] 步骤2: 按地区优选 region=${region}, count=${count}`);
 
@@ -15141,7 +15149,7 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
             optimizeResults[region] = data.data
                 .map(line => parseRegionResultLine(line, region))
                 .filter(Boolean);
-            currentSelectedCountry = region;
+            applySelectedRegionResults(region, count);
 
             displayResults();
 
@@ -15629,8 +15637,15 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                     progressFill.style.background = '#10b981';
                     progressFill.style.width = '100%';
                     progressText.textContent = `正在获取 ${selectedRegion} 地区优选 IP...`;
-                    await startRegionOptimize(selectedRegion, selectedCount);
-                    return;
+                    try {
+                        await startRegionOptimize(selectedRegion, selectedCount);
+                        return;
+                    } catch (regionError) {
+                        console.warn('[在线优选] 地区接口优选失败，回退到本地测速流程:', regionError);
+                        progressFill.style.background = '#f59e0b';
+                        progressFill.style.width = '15%';
+                        progressText.textContent = `地区接口不可用，正在回退到 ${selectedRegion} 本地测速...`;
+                    }
                 }
 
                 // 获取用户选择
@@ -15667,6 +15682,11 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                 // 分类结果
                 console.log('[在线优选] 步骤5: 开始分类结果');
                 classifyResults(results);
+
+                if (selectedRegion) {
+                    console.log(`[在线优选] 步骤5.5: 按地区筛选结果 region=${selectedRegion}, count=${selectedCount}`);
+                    applySelectedRegionResults(selectedRegion, selectedCount);
+                }
 
                 // 显示结果
                 console.log('[在线优选] 步骤6: 显示结果');
