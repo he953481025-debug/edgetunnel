@@ -2822,7 +2822,7 @@ async function 生成随机IP(request, count = 16, 指定端口 = -1, TLS = true
 		const 目标端口 = 指定端口 === -1
 			? cfport[Math.floor(Math.random() * cfport.length)]
 			: (TLS ? 指定端口 : (NOTLS端口[TLS端口.indexOf(Number(指定端口))] ?? 指定端口));
-		return `${ip}:${目标端口}#${cfname}${index + 1}`;
+		return `${ip}:${目标端口}#${cfname}${index + 1} ${request.cf.country || 'Unknown'} ${request.cf.city || 'Unknown'}`;
 	});
 	return [randomIPs, randomIPs.join('\n')];
 }
