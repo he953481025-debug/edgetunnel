@@ -57,6 +57,21 @@
 
 </details>
 
+### 🧩 Workers 前后端一体部署
+
+当前仓库已支持使用 Cloudflare Workers Static Assets 一次部署前端和后端：
+
+1. 前端静态资源目录：`EDT-Pages.github.io`
+2. 后端入口文件：`_worker.js`
+3. 本地部署命令：
+   ```bash
+   wrangler deploy
+   ```
+4. 部署后，`/admin`、`/login`、`/noADMIN`、`/noKV` 会直接使用当前仓库自带的静态页面，不再依赖外部 `https://edt-pages.github.io`
+
+> [!TIP]
+> `wrangler.toml` 已配置 `assets.directory = "./EDT-Pages.github.io"` 与 `run_worker_first = true`，适合当前这种“Worker 处理后端接口，静态资源同域托管”的场景。
+
 ### 🛠 Pages 上传 部署方法 **最佳推荐!!!** [图文教程](https://cmliussss.com/p/edt2/)
 
 <details>
@@ -160,8 +175,10 @@
    /admin/ADD.txt?region=JP&count=10
    /admin/ADD.txt?colo=NRT&count=5
    /sub?region=SG&count=8
+   /admin/getADDAPI?region=JP&count=10
+   /admin/getADDAPI?colo=HKG&count=5&append=true
    ```
-   `region` 支持国家代码（如 `JP`、`SG`、`US`），`colo` 支持 Cloudflare 机房代码（如 `NRT`、`HKG`、`LAX`），`count` 为返回数量。
+   `region` 支持国家代码（如 `JP`、`SG`、`US`），`colo` 支持 Cloudflare 机房代码（如 `NRT`、`HKG`、`LAX`），`count` 为返回数量。`/admin/getADDAPI` 现在也支持按地区在线测试，带上 `append=true` 会把测试结果自动去重追加到自定义优选地址 `ADD.txt`。
 
 ---
 

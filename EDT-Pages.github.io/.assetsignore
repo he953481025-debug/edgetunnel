@@ -1,0 +1,6 @@
+.git
+.git/**
+.git.backup
+.git.backup/**
+.gitignore
+README.md

@@ -36,3 +36,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 log/
+
+# Nested repo backup
+EDT-Pages.github.io/.git.backup/

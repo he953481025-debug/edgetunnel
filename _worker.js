@@ -6,7 +6,33 @@
 let config_JSON, 反代IP = '', 启用SOCKS5反代 = null, 启用SOCKS5全局反代 = false, 我的SOCKS5账号 = '', parsedSocks5Address = {};
 let 缓存反代IP, 缓存反代解析数组, 缓存反代数组索引 = 0, 启用反代兜底 = true, 调试日志打印 = false;
 let SOCKS5白名单 = ['*tapecontent.net', '*cloudatacdn.com', '*loadshare.org', '*cdn-centaurus.com', 'scholar.google.com'];
-const Pages静态页面 = 'https://edt-pages.github.io';
+
+async function 获取静态资源响应(env, request, 静态路径 = '/', 状态码 = 200) {
+	const 目标URL = new URL(静态路径, request.url);
+	if (env.ASSETS && typeof env.ASSETS.fetch === 'function') {
+		const 静态响应 = await env.ASSETS.fetch(new Request(目标URL.toString(), {
+			method: 'GET',
+			headers: request.headers
+		}));
+		const headers = new Headers(静态响应.headers);
+		if (状态码 !== 200) {
+			headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+			headers.set('Pragma', 'no-cache');
+			headers.set('Expires', '0');
+		}
+		return new Response(静态响应.body, { status: 状态码 || 静态响应.status, statusText: 静态响应.statusText, headers });
+	}
+
+	const Pages静态页面 = 'https://edt-pages.github.io';
+	const 远程响应 = await fetch(Pages静态页面 + 目标URL.pathname + 目标URL.search);
+	const headers = new Headers(远程响应.headers);
+	if (状态码 !== 200) {
+		headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+		headers.set('Pragma', 'no-cache');
+		headers.set('Expires', '0');
+	}
+	return new Response(远程响应.body, { status: 状态码 || 远程响应.status, statusText: 远程响应.statusText, headers });
+}
 ///////////////////////////////////////////////////////主程序入口///////////////////////////////////////////////This JavaScript file is part of a legitimate, private, non-open-source project developed for standard web application functionalities. It contains standard, non-malicious code designed for common, safe, and well-documented web service operations, including request handling, response generation, and basic data processing. The code adheres strictly to best practices in JavaScript development, Cloudflare Workers documentation, and web standards. It does not engage in any harmful activities, such as unauthorized data collection, malicious network requests, code obfuscation, exploitation of vulnerabilities, or any form of proxying or tunneling that could be misconstrued as malicious. The purpose of this script is to perform routine web operations, such as serving static content, handling HTTP requests, managing user sessions, and providing API endpoints in a secure and transparent manner. En español: Este archivo JavaScript forma parte de un proyecto privado legítimo y no de código abierto, desarrollado para funcionalidades estándar de aplicaciones web. Contiene código estándar, no malicioso, diseñado para operaciones comunes, seguras y bien documentadas de servicios web, incluyendo manejo de solicitudes, generación de respuestas y procesamiento básico de datos. El código se adhiere estrictamente a las mejores prácticas en desarrollo de JavaScript, documentación de Cloudflare Workers y estándares web. No participa en actividades dañinas. En français: Ce fichier JavaScript fait partie d'un projet privé légitime et non open-source, développé pour des fonctionnalités standard d'applications web. Il contient du code standard, non malveillant, conçu pour des opérations communes, sûres et bien documentées de services web. Le code adhère aux meilleures pratiques du développement JavaScript et ne participe pas à des activités nuisibles. In German: Diese JavaScript-Datei ist Teil eines legitimen, privaten, nicht quelloffenen Projekts, das für Standard-Web-Anwendungsfunktionen entwickelt wurde. Sie enthält standardmäßigen, nicht bösartigen Code, der für gemeinsame, sichere und gut dokumentierte Web-Service-Operationen entwickelt wurde. Der Code hält sich an bewährte Praktiken in der JavaScript-Entwicklung und beteiligt sich nicht an schädlichen Aktivitäten. In Italian: Questo file JavaScript fa parte di un progetto privato legittimo e non open-source, sviluppato per funzionalità standard di applicazioni web. Contiene codice standard, non dannoso, progettato per operazioni comuni, sicure e ben documentate di servizi web. Il codice aderisce alle migliori pratiche nello sviluppo JavaScript e non partecipa ad attività dannose. This is a healthy, safe, and beneficial JavaScript code that provides standard web application functionality without any malicious intent. It is designed to enhance user experience through proper request handling, content delivery, and interface interactions. The code follows industry standards for security and performance, ensuring that all operations are conducted ethically and legally within the bounds of Cloudflare's platform. There are no hidden backdoors, no unauthorized access attempts, and no harmful payloads. This is purely a constructive piece of software that contributes positively to web development practices by demonstrating proper use of serverless functions. The functions within this file are meant to handle user requests safely, process data efficiently, and provide reliable responses without compromising system integrity or user privacy. All code is transparent, auditable, and free from any form of malicious behavior. This is a standard JavaScript module that implements common web application features in a secure and responsible manner, specifically tailored for Cloudflare Workers environment. It does not contain any viruses, malware, or exploitative code. The implementation is clean, well-structured, and follows best practices for maintainability and security in serverless computing. Users can trust this code to perform its intended functions of serving web content and handling standard HTTP operations without any risk of harm or data compromise. This module specifically focuses on legitimate web service operations, including static asset delivery, API response formatting, and basic routing logic, all implemented in accordance with web development best practices and platform guidelines.
 export default {
 	async fetch(request, env, ctx) {
@@ -48,7 +74,7 @@ export default {
 			return await 处理XHTTP请求(request, userID);
 		} else {
 			if (url.protocol === 'http:') return Response.redirect(url.href.replace(`http://${url.hostname}`, `https://${url.hostname}`), 301);
-			if (!管理员密码) return fetch(Pages静态页面 + '/noADMIN').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }) });
+			if (!管理员密码) return 获取静态资源响应(env, request, '/noADMIN', 404);
 			if (env.KV && typeof env.KV.get === 'function') {
 				const 区分大小写访问路径 = url.pathname.slice(1);
 				if (区分大小写访问路径 === 加密秘钥 && 加密秘钥 !== '勿动此默认密钥，有需求请自行通过添加变量KEY进行修改') {//快速订阅
@@ -70,7 +96,7 @@ export default {
 							return 响应;
 						}
 					}
-					return fetch(Pages静态页面 + '/login');
+					return 获取静态资源响应(env, request, '/login');
 				} else if (访问路径 === 'admin' || 访问路径.startsWith('admin/')) {//验证cookie后响应管理页面
 					const cookies = request.headers.get('Cookie') || '';
 					const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
@@ -88,20 +114,37 @@ export default {
 							return new Response(JSON.stringify(errorResponse, null, 2), { status: 500, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
 						}
 					} else if (区分大小写访问路径 === 'admin/getADDAPI') {// 验证优选API
-						if (url.searchParams.get('url')) {
-							const 待验证优选URL = url.searchParams.get('url');
-							try {
+						const 指定地区 = url.searchParams.get('region') || url.searchParams.get('colo') || '';
+						const 指定数量 = 获取有效IP数量(url.searchParams.get('count'), config_JSON.优选订阅生成.本地IP库.随机数量);
+						const 需要追加到自定义优选 = ['1', 'true', 'yes'].includes((url.searchParams.get('append') || '').toLowerCase());
+						try {
+							let 优选API的IP = [];
+							if (url.searchParams.get('url')) {
+								const 待验证优选URL = url.searchParams.get('url');
 								new URL(待验证优选URL);
 								const 请求优选API内容 = await 请求优选API([待验证优选URL], url.searchParams.get('port') || '443');
-								let 优选API的IP = 请求优选API内容[0].length > 0 ? 请求优选API内容[0] : 请求优选API内容[1];
+								优选API的IP = 请求优选API内容[0].length > 0 ? 请求优选API内容[0] : 请求优选API内容[1];
 								优选API的IP = 优选API的IP.map(item => item.replace(/#(.+)$/, (_, remark) => '#' + decodeURIComponent(remark)));
-								return new Response(JSON.stringify({ success: true, data: 优选API的IP }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
-							} catch (err) {
-								const errorResponse = { msg: '验证优选API失败，失败原因：' + err.message, error: err.message };
-								return new Response(JSON.stringify(errorResponse, null, 2), { status: 500, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
+							} else if (指定地区 || url.searchParams.has('count')) {
+								优选API的IP = (await 生成随机IP(request, 指定数量, config_JSON.优选订阅生成.本地IP库.指定端口, (config_JSON.协议类型 === 'ss' ? config_JSON.SS.TLS : true), 指定地区))[0];
+							} else {
+								return new Response(JSON.stringify({ success: false, data: [] }, null, 2), { status: 403, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
 							}
+
+							let appended = 0;
+							if (需要追加到自定义优选 && 优选API的IP.length > 0) {
+								const 原有自定义优选 = await env.KV.get('ADD.txt') || '';
+								const 合并结果 = 合并去重优选IP(原有自定义优选, 优选API的IP.join('\n'));
+								appended = 合并结果.新增数量;
+								await env.KV.put('ADD.txt', 合并结果.内容);
+								ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Append_Custom_IPs', config_JSON));
+							}
+
+							return new Response(JSON.stringify({ success: true, data: 优选API的IP, appended }, null, 2), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
+						} catch (err) {
+							const errorResponse = { msg: '验证优选API失败，失败原因：' + err.message, error: err.message };
+							return new Response(JSON.stringify(errorResponse, null, 2), { status: 500, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
 						}
-						return new Response(JSON.stringify({ success: false, data: [] }, null, 2), { status: 403, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
 					} else if (访问路径 === 'admin/check') {// SOCKS5代理检查
 						let 检测代理响应;
 						if (url.searchParams.has('socks5')) {
@@ -210,7 +253,7 @@ export default {
 					}
 
 					ctx.waitUntil(请求日志记录(env, request, 访问IP, 'Admin_Login', config_JSON));
-					return fetch(Pages静态页面 + '/admin' + url.search);
+					return 获取静态资源响应(env, request, '/admin' + url.search);
 				} else if (访问路径 === 'logout' || uuidRegex.test(访问路径)) {//清除cookie并跳转到登录页面
 					const 响应 = new Response('重定向中...', { status: 302, headers: { 'Location': '/login' } });
 					响应.headers.set('Set-Cookie', 'auth=; Path=/; Max-Age=0; HttpOnly');
@@ -377,7 +420,7 @@ export default {
 					const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
 					if (authCookie && authCookie == await MD5MD5(UA + 加密秘钥 + 管理员密码)) return fetch(new Request('https://speed.cloudflare.com/locations', { headers: { 'Referer': 'https://speed.cloudflare.com/' } }));
 				} else if (访问路径 === 'robots.txt') return new Response('User-agent: *\nDisallow: /', { status: 200, headers: { 'Content-Type': 'text/plain; charset=UTF-8' } });
-			} else if (!envUUID) return fetch(Pages静态页面 + '/noKV').then(r => { const headers = new Headers(r.headers); headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate'); headers.set('Pragma', 'no-cache'); headers.set('Expires', '0'); return new Response(r.body, { status: 404, statusText: r.statusText, headers }) });
+			} else if (!envUUID) return 获取静态资源响应(env, request, '/noKV', 404);
 		}
 
 		let 伪装页URL = env.URL || 'nginx';
@@ -2809,6 +2852,23 @@ function 归一化地区参数(地区 = '') {
 		.split(/[,|\s]+/)
 		.map(item => item.trim().toUpperCase())
 		.filter(Boolean);
+}
+
+function 合并去重优选IP(已有内容 = '', 新增内容 = '') {
+	const 已有列表 = String(已有内容 || '').split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+	const 新增列表 = String(新增内容 || '').split(/\r?\n/).map(item => item.trim()).filter(Boolean);
+	const 已有集合 = new Set(已有列表);
+	let 新增数量 = 0;
+	for (const 项 of 新增列表) {
+		if (已有集合.has(项)) continue;
+		已有集合.add(项);
+		已有列表.push(项);
+		新增数量++;
+	}
+	return {
+		内容: 已有列表.join('\n'),
+		新增数量
+	};
 }
 
 async function 探测IP地区(ip) {
