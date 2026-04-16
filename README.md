@@ -155,6 +155,14 @@
    /http://user:password@127.0.0.1:8080 (默认激活全局SOCKS5)
    ```
 
+- 按地区和数量生成随机优选 IP
+   ```url
+   /admin/ADD.txt?region=JP&count=10
+   /admin/ADD.txt?colo=NRT&count=5
+   /sub?region=SG&count=8
+   ```
+   `region` 支持国家代码（如 `JP`、`SG`、`US`），`colo` 支持 Cloudflare 机房代码（如 `NRT`、`HKG`、`LAX`），`count` 为返回数量。
+
 ---
 
 ## 💻 客户端适配情况
