@@ -127,7 +127,7 @@ export default {
 								优选API的IP = 请求优选API内容[0].length > 0 ? 请求优选API内容[0] : 请求优选API内容[1];
 								优选API的IP = 优选API的IP.map(item => item.replace(/#(.+)$/, (_, remark) => '#' + decodeURIComponent(remark)));
 							} else if (指定地区 || url.searchParams.has('count')) {
-								优选API的IP = (await 生成随机IP(request, 指定数量, config_JSON.优选订阅生成.本地IP库.指定端口, (config_JSON.协议类型 === 'ss' ? config_JSON.SS.TLS : true), 指定地区))[0];
+								优选API的IP = (await 生成随机IP(request, 指定数量, config_JSON.优选订阅生成.本地IP库.指定端口, (config_JSON.协议类型 === 'ss' ? config_JSON.SS.TLS : true), 指定地区, env))[0];
 							} else {
 								return new Response(JSON.stringify({ success: false, data: [] }, null, 2), { status: 403, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
 							}
@@ -247,7 +247,7 @@ export default {
 						const 指定数量 = 获取有效IP数量(url.searchParams.get('count'), config_JSON.优选订阅生成.本地IP库.随机数量);
 						const 强制随机生成 = url.searchParams.has('region') || url.searchParams.has('colo') || url.searchParams.has('count');
 						let 本地优选IP = await env.KV.get('ADD.txt') || 'null';
-						if (强制随机生成 || 本地优选IP == 'null') 本地优选IP = (await 生成随机IP(request, 指定数量, config_JSON.优选订阅生成.本地IP库.指定端口, (config_JSON.协议类型 === 'ss' ? config_JSON.SS.TLS : true), 指定地区))[1];
+						if (强制随机生成 || 本地优选IP == 'null') 本地优选IP = (await 生成随机IP(request, 指定数量, config_JSON.优选订阅生成.本地IP库.指定端口, (config_JSON.协议类型 === 'ss' ? config_JSON.SS.TLS : true), 指定地区, env))[1];
 						return new Response(本地优选IP, { status: 200, headers: { 'Content-Type': 'text/plain;charset=utf-8', 'asn': request.cf.asn } });
 					} else if (访问路径 === 'admin/cf.json') {// CF配置文件
 						return new Response(JSON.stringify(request.cf, null, 2), { status: 200, headers: { 'Content-Type': 'application/json;charset=utf-8' } });
@@ -312,9 +312,9 @@ export default {
 								const 指定地区 = url.searchParams.get('region') || url.searchParams.get('colo') || config_JSON.优选订阅生成.本地IP库.指定地区 || '';
 								const 指定数量 = 获取有效IP数量(url.searchParams.get('count'), config_JSON.优选订阅生成.本地IP库.随机数量);
 								const 完整优选列表 = config_JSON.优选订阅生成.本地IP库.随机IP ? (
-									await 生成随机IP(request, 指定数量, config_JSON.优选订阅生成.本地IP库.指定端口, (协议类型 === 'ss' ? config_JSON.SS.TLS : true), 指定地区)
+									await 生成随机IP(request, 指定数量, config_JSON.优选订阅生成.本地IP库.指定端口, (协议类型 === 'ss' ? config_JSON.SS.TLS : true), 指定地区, env)
 								)[0] : await env.KV.get('ADD.txt') ? await 整理成数组(await env.KV.get('ADD.txt')) : (
-									await 生成随机IP(request, 指定数量, config_JSON.优选订阅生成.本地IP库.指定端口, (协议类型 === 'ss' ? config_JSON.SS.TLS : true), 指定地区)
+									await 生成随机IP(request, 指定数量, config_JSON.优选订阅生成.本地IP库.指定端口, (协议类型 === 'ss' ? config_JSON.SS.TLS : true), 指定地区, env)
 								)[0];
 								const 优选API = [], 优选IP = [], 其他节点 = [];
 								for (const 元素 of 完整优选列表) {
@@ -416,18 +416,27 @@ export default {
 						}
 						return new Response(订阅内容, { status: 200, headers: responseHeaders });
 					}
-				} else if (访问路径 === 'cdn-cgi/trace') {// 代理 trace 检测，避免前端跨域失败
-					try {
-						return await fetch(new Request(`https://speed.cloudflare.com/cdn-cgi/trace${url.search}`, {
-							headers: {
-								'Referer': 'https://speed.cloudflare.com/',
-								'User-Agent': request.headers.get('User-Agent') || 'Mozilla/5.0'
-							}
-						}));
-					} catch (error) {
-						console.error(`[Trace代理] 请求失败: ${error.message}`);
-						return 获取静态资源响应(env, request, '/cdn-cgi/trace');
-					}
+				} else if (访问路径 === 'cdn-cgi/trace') {// 直接用 request.cf 构造 trace 响应，避免依赖 speed.cloudflare.com
+					const cf = request.cf || {};
+					const traceLines = [
+						`fl=${cf.clientTcpRtt || '0'}`,
+						`h=${url.hostname}`,
+						`ip=${request.headers.get('CF-Connecting-IP') || 访问IP}`,
+						`ts=${Date.now() / 1000}`,
+						`visit_scheme=${url.protocol.replace(':', '')}`,
+						`uag=${request.headers.get('User-Agent') || ''}`,
+						`colo=${cf.colo || ''}`,
+						`sliver=none`,
+						`http=${cf.httpProtocol || 'http/1.1'}`,
+						`loc=${cf.country || ''}`,
+						`tls=${cf.tlsVersion || ''}`,
+						`sni=${cf.tlsClientAuth?.certPresented === '1' ? 'on' : 'plaintext'}`,
+						`warp=off`,
+						`gateway=off`,
+						`rbi=off`,
+						`kex=${cf.tlsExportedAuthenticator?.length ? 'present' : 'X25519'}`,
+					];
+					return new Response(traceLines.join('\n'), { headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
 				} else if (访问路径 === 'locations') {//反代locations列表
 					const cookies = request.headers.get('Cookie') || '';
 					const authCookie = cookies.split(';').find(c => c.trim().startsWith('auth='))?.split('=')[1];
@@ -2884,7 +2893,36 @@ function 合并去重优选IP(已有内容 = '', 新增内容 = '') {
 	};
 }
 
-async function 生成随机IP(request, count = 16, 指定端口 = -1, TLS = true, 指定地区 = '') {
+let _locationsMap = null;
+async function 获取地区映射(env) {
+	if (_locationsMap) return _locationsMap;
+	_locationsMap = new Map();
+	try {
+		let data;
+		if (env.ASSETS && typeof env.ASSETS.fetch === 'function') {
+			const res = await env.ASSETS.fetch(new Request('https://placeholder/locations'));
+			data = await res.json();
+		} else {
+			const res = await fetch('https://edt-pages.github.io/locations');
+			data = await res.json();
+		}
+		for (const loc of data) {
+			if (loc.iata) _locationsMap.set(loc.iata.toUpperCase(), { region: loc.region || '', city: loc.city || '', cca2: loc.cca2 || '' });
+		}
+	} catch (e) {
+		console.error(`[locations] 加载失败: ${e.message}`);
+	}
+	return _locationsMap;
+}
+
+function 格式化地区标签(locMap, colo, country) {
+	const info = locMap.get((colo || '').toUpperCase());
+	if (info && info.region && info.city) return `${info.region} ${info.city}`;
+	if (info && info.city) return info.city;
+	return country || colo || 'Unknown';
+}
+
+async function 生成随机IP(request, count = 16, 指定端口 = -1, TLS = true, 指定地区 = '', env = {}) {
 	const ISP配置 = {
 		'9808': { file: 'cmcc', name: 'CF移动优选' },
 		'4837': { file: 'cu', name: 'CF联通优选' },
@@ -2918,30 +2956,25 @@ async function 生成随机IP(request, count = 16, 指定端口 = -1, TLS = true
 		return { ip, 端口: 生成目标端口() };
 	};
 
+	const locMap = await 获取地区映射(env);
+	const 客户端Colo = (request.cf?.colo || '').toUpperCase();
+	const 客户端地区标签 = 格式化地区标签(locMap, 客户端Colo, request.cf?.country);
+
 	if (地区过滤.length === 0) {
 		const randomIPs = Array.from({ length: count }, (_, index) => {
 			const { ip, 端口 } = 生成候选IP();
-			return `${ip}:${端口}#${cfname}${index + 1} ${request.cf.country || 'Unknown'} ${request.cf.city || 'Unknown'}`;
+			return `${ip}:${端口}#${cfname}${index + 1} ${客户端地区标签}`;
 		});
 		return [randomIPs, randomIPs.join('\n')];
 	}
 
 	// Cloudflare anycast IP 从服务端无法判断对客户端会路由到哪个 colo，
 	// 直接生成 IP 并用请求的地区信息标注，真正的 colo 筛选由客户端完成
-	const 客户端Colo = (request.cf?.colo || '').toUpperCase();
-	const 客户端Country = (request.cf?.country || '').toUpperCase();
 	const 地区标签 = 地区过滤[0];
-	let 标签Country, 标签Colo;
-	if (地区标签.length <= 2) {
-		标签Country = 地区标签;
-		标签Colo = 客户端Country === 地区标签 ? 客户端Colo : 'AUTO';
-	} else {
-		标签Colo = 地区标签;
-		标签Country = 客户端Colo === 地区标签 ? 客户端Country : 地区标签;
-	}
+	const 指定地区标签 = 格式化地区标签(locMap, 地区标签, 地区标签);
 	const randomIPs = Array.from({ length: count }, (_, index) => {
 		const { ip, 端口 } = 生成候选IP();
-		return `${ip}:${端口}#${cfname}${index + 1} ${标签Country} ${标签Colo}`;
+		return `${ip}:${端口}#${cfname}${index + 1} ${指定地区标签}`;
 	});
 	return [randomIPs, randomIPs.join('\n')];
 }
