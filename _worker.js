@@ -133,7 +133,7 @@ export default {
 							}
 
 							let appended = 0;
-							if (需要追加到自定义优选 && 优选API的IP.length > 0) {
+							if (需要追加到自定义优选 && 优选API的IP.length > 0 && env.KV && typeof env.KV.put === 'function') {
 								const 原有自定义优选 = await env.KV.get('ADD.txt') || '';
 								const 合并结果 = 合并去重优选IP(原有自定义优选, 优选API的IP.join('\n'));
 								appended = 合并结果.新增数量;
@@ -2884,44 +2884,6 @@ function 合并去重优选IP(已有内容 = '', 新增内容 = '') {
 	};
 }
 
-async function 探测IP地区(ip) {
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort('timeout'), 1500);
-	try {
-		const response = await fetch(`http://${ip}/cdn-cgi/trace`, {
-			method: 'GET',
-			headers: {
-				'Host': 'speed.cloudflare.com',
-				'User-Agent': 'edgetunnel-region-probe'
-			},
-			redirect: 'follow',
-			signal: controller.signal
-		});
-		if (!response.ok) return null;
-		const trace = await response.text();
-		const data = Object.fromEntries(
-			trace.split('\n')
-				.map(line => line.trim())
-				.filter(Boolean)
-				.map(line => {
-					const index = line.indexOf('=');
-					return index === -1 ? null : [line.slice(0, index), line.slice(index + 1)];
-				})
-				.filter(Boolean)
-		);
-		if (!data.colo && !data.loc) return null;
-		return {
-			colo: (data.colo || '').toUpperCase(),
-			country: (data.loc || '').toUpperCase(),
-			city: data.city || ''
-		};
-	} catch {
-		return null;
-	} finally {
-		clearTimeout(timeout);
-	}
-}
-
 async function 生成随机IP(request, count = 16, 指定端口 = -1, TLS = true, 指定地区 = '') {
 	const ISP配置 = {
 		'9808': { file: 'cmcc', name: 'CF移动优选' },
@@ -2947,9 +2909,10 @@ async function 生成随机IP(request, count = 16, 指定端口 = -1, TLS = true
 	const TLS端口 = [443, 2053, 2083, 2087, 2096, 8443];
 	const NOTLS端口 = [80, 2052, 2082, 2086, 2095, 8080];
 	const 地区过滤 = 归一化地区参数(指定地区);
-	const 生成目标端口 = () => 指定端口 === -1
+	const 指定端口数值 = Number(指定端口);
+	const 生成目标端口 = () => 指定端口数值 === -1
 		? cfport[Math.floor(Math.random() * cfport.length)]
-		: (TLS ? 指定端口 : (NOTLS端口[TLS端口.indexOf(Number(指定端口))] ?? 指定端口));
+		: (TLS ? 指定端口数值 : (NOTLS端口[TLS端口.indexOf(指定端口数值)] ?? 指定端口数值));
 	const 生成候选IP = () => {
 		const ip = generateRandomIPFromCIDR(cidrList[Math.floor(Math.random() * cidrList.length)]);
 		return { ip, 端口: 生成目标端口() };
@@ -2963,32 +2926,23 @@ async function 生成随机IP(request, count = 16, 指定端口 = -1, TLS = true
 		return [randomIPs, randomIPs.join('\n')];
 	}
 
-	const randomIPs = [];
-	const 已存在IP = new Set();
-	const 最大尝试次数 = Math.max(count * 12, 24);
-	let 已尝试次数 = 0;
-
-	while (randomIPs.length < count && 已尝试次数 < 最大尝试次数) {
-		const 并发数量 = Math.min(Math.max((count - randomIPs.length) * 3, 3), 12);
-		const 候选列表 = [];
-		while (候选列表.length < 并发数量 && 已尝试次数 < 最大尝试次数) {
-			const 候选 = 生成候选IP();
-			已尝试次数++;
-			if (已存在IP.has(候选.ip)) continue;
-			已存在IP.add(候选.ip);
-			候选列表.push(候选);
-		}
-		if (候选列表.length === 0) break;
-		const 探测结果 = await Promise.all(候选列表.map(async 候选 => ({ 候选, 地区: await 探测IP地区(候选.ip) })));
-		for (const { 候选, 地区 } of 探测结果) {
-			if (!地区) continue;
-			const 是否匹配 = 地区过滤.includes(地区.colo) || 地区过滤.includes(地区.country);
-			if (!是否匹配) continue;
-			randomIPs.push(`${候选.ip}:${候选.端口}#${cfname}${randomIPs.length + 1} ${地区.country || 'Unknown'} ${地区.colo || 'AUTO'}`);
-			if (randomIPs.length >= count) break;
-		}
+	// Cloudflare anycast IP 从服务端无法判断对客户端会路由到哪个 colo，
+	// 直接生成 IP 并用请求的地区信息标注，真正的 colo 筛选由客户端完成
+	const 客户端Colo = (request.cf?.colo || '').toUpperCase();
+	const 客户端Country = (request.cf?.country || '').toUpperCase();
+	const 地区标签 = 地区过滤[0];
+	let 标签Country, 标签Colo;
+	if (地区标签.length <= 2) {
+		标签Country = 地区标签;
+		标签Colo = 客户端Country === 地区标签 ? 客户端Colo : 'AUTO';
+	} else {
+		标签Colo = 地区标签;
+		标签Country = 客户端Colo === 地区标签 ? 客户端Country : 地区标签;
 	}
-
+	const randomIPs = Array.from({ length: count }, (_, index) => {
+		const { ip, 端口 } = 生成候选IP();
+		return `${ip}:${端口}#${cfname}${index + 1} ${标签Country} ${标签Colo}`;
+	});
 	return [randomIPs, randomIPs.join('\n')];
 }
 
