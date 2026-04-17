@@ -8041,7 +8041,7 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
             <!-- 进度条 -->
             <div class="optimize-progress-bar hidden-section" id="optimizeProgressBar">
                 <div class="optimize-progress-fill" id="optimizeProgressFill"></div>
-                <div class="optimize-progress-text" id="optimizeProgressText">0/512 (0.00%) - 成功: 0, 失败: 0</div>
+                <div class="optimize-progress-text" id="optimizeProgressText">准备中...</div>
             </div>
 
             <!-- 结果选项卡 -->
@@ -15618,7 +15618,7 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
             const progressText = document.getElementById('optimizeProgressText');
             progressBar.classList.remove('hidden-section');
             progressFill.style.width = '0%';
-            progressText.textContent = '0/512 (0.00%)';
+            progressText.textContent = '准备中...';
 
             document.getElementById('optimizeResultsTabs').classList.add('hidden-section');
             document.getElementById('optimizeResultsContent').classList.add('hidden-section');
@@ -15647,7 +15647,7 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                         console.warn('[在线优选] 地区接口优选失败，回退到本地测速流程:', regionError);
                         progressFill.style.background = '#f59e0b';
                         progressFill.style.width = '15%';
-                        progressText.textContent = `地区接口不可用，正在回退到 ${selectedRegion} 本地测速...`;
+                        progressText.textContent = `地区接口不可用，正在本地测速（${selectedRegion} 地区IP可能较少）...`;
                     }
                 }
 
@@ -15665,9 +15665,10 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                 console.log(`[在线优选] 步骤2: 用户选择 - IP库=${ipLibrary}, 端口=${port}, 并发线程=${concurrency}`);
                 currentIPLibrary = ipLibrary; // 保存当前IP库类型
 
-                // 获取IP列表
+                // 获取IP列表（选了地区回退时测更多IP以增加命中率）
+                const maxCount = selectedRegion ? 512 : 256;
                 console.log('[在线优选] 步骤3: 获取 IP 列表');
-                const ips = await getIPList(ipLibrary, port);
+                const ips = await getIPList(ipLibrary, port, maxCount);
 
                 if (ips.length === 0) {
                     console.error('[在线优选] 错误: 未能获取到IP列表');
@@ -15677,9 +15678,19 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
 
                 console.log(`[在线优选] 成功: 已获取 ${ips.length} 个 IP`);
 
-                // 测速（多线程并发）
-                console.log('[在线优选] 步骤4: 开始 IP 测速（多线程并发）');
-                const results = await testIPsConcurrent(ips, progressFill, progressText, concurrency);
+                // 构建提前终止回调（选了特定地区时，找够目标数量即停止）
+                const shouldStop = selectedRegion ? (results) => {
+                    const matchCount = results.filter(r => {
+                        if (!r.colo) return false;
+                        const loc = locationsData.find(l => l.iata === r.colo);
+                        return loc ? loc.cca2 === selectedRegion : r.colo === selectedRegion;
+                    }).length;
+                    return matchCount >= selectedCount;
+                } : null;
+
+                // 测速（Worker Pool 并发）
+                console.log('[在线优选] 步骤4: 开始 IP 测速（Worker Pool 并发）');
+                const results = await testIPsConcurrent(ips, progressFill, progressText, concurrency, shouldStop);
                 console.log(`[在线优选] 完成: 测速完成，有效 IP 数量=${results.length}`);
 
                 // 分类结果
@@ -15689,6 +15700,13 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                 if (selectedRegion) {
                     console.log(`[在线优选] 步骤5.5: 按地区筛选结果 region=${selectedRegion}, count=${selectedCount}`);
                     applySelectedRegionResults(selectedRegion, selectedCount);
+
+                    // 如果目标地区没有结果，恢复显示所有地区并提示
+                    if (!optimizeResults[selectedRegion] || optimizeResults[selectedRegion].length === 0) {
+                        console.log(`[在线优选] 提示: ${selectedRegion} 地区无结果，显示所有可用地区`);
+                        classifyResults(results);
+                        showToast(`未找到 ${selectedRegion} 地区的IP，已显示所有可用地区结果`, 'info');
+                    }
                 }
 
                 // 显示结果
@@ -15816,7 +15834,7 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
         }
 
         // 获取IP列表
-        async function getIPList(ipLibrary, port) {
+        async function getIPList(ipLibrary, port, maxCount = 256) {
             // 定义各个IP库的原始URLs（仅使用官方地址）
             const urlMap = {
                 'cf-official': 'https://cf.090227.xyz/ips-v4',
@@ -15836,11 +15854,11 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                 if (ipLibrary === 'reverse-proxy') {
                     // 处理反向代理列表
                     console.log('[在线优选] 进度: 处理反向代理列表');
-                    return processReverseProxyList(text, port);
+                    return processReverseProxyList(text, port, maxCount);
                 } else {
                     // 处理CIDR列表
                     console.log('[在线优选] 进度: 处理 CIDR 列表');
-                    return processCIDRList(text, port);
+                    return processCIDRList(text, port, maxCount);
                 }
             } catch (error) {
                 console.error('[在线优选] 获取IP列表失败:', error);
@@ -15849,7 +15867,7 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
         }
 
         // 处理反向代理列表
-        function processReverseProxyList(text, targetPort) {
+        function processReverseProxyList(text, targetPort, maxCount = 256) {
             const lines = text.trim().split('\n');
             const filteredIPs = [];
 
@@ -15871,24 +15889,24 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
 
             console.log(`[在线优选] 结果: 匹配端口=${targetPort} 的 IP 数量=${filteredIPs.length}`);
 
-            // 如果超过512个，随机选择512个
-            if (filteredIPs.length > 512) {
-                console.log('[在线优选] 提示: IP 数量超过 512，将随机选择 512 个');
-                return shuffleArray(filteredIPs).slice(0, 512);
+            // 如果超过maxCount个，随机选择maxCount个
+            if (filteredIPs.length > maxCount) {
+                console.log(`[在线优选] 提示: IP 数量超过 ${maxCount}，将随机选择 ${maxCount} 个`);
+                return shuffleArray(filteredIPs).slice(0, maxCount);
             }
 
             return filteredIPs;
         }
 
         // 处理CIDR列表
-        function processCIDRList(text, port) {
+        function processCIDRList(text, port, maxCount = 256) {
             const lines = text.trim().split('\n');
             const cidrs = lines.filter(line => line.trim() && !line.startsWith('#'));
 
             console.log(`[在线优选] 调试: CIDR 列表数量=${cidrs.length}`);
 
             const ips = [];
-            const targetCount = 512;
+            const targetCount = maxCount;
 
             while (ips.length < targetCount && cidrs.length > 0) {
                 for (const cidr of cidrs) {
@@ -15935,64 +15953,69 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
             return `${ip1}.${ip2}.${ip3}.${ip4}`;
         }
 
-        // 测试IP列表（4线程并发版本）
-        async function testIPsConcurrent(ips, progressFill, progressText, concurrency = 8) {
+        // 测试IP列表（Worker Pool 并发版本）
+        async function testIPsConcurrent(ips, progressFill, progressText, concurrency = 8, shouldStop = null) {
             const results = [];
             const total = ips.length;
             let completedCount = 0;
             let successCount = 0;
             let failCount = 0;
+            let stopped = false;
 
             console.log(`[在线优选] 开始: 并发测试 总计=${total} 个 IP（线程=${concurrency}）`);
 
             // 更新进度的函数
             const updateProgress = () => {
                 const progress = (completedCount / total * 100).toFixed(2);
-                // 计算红色和绿色部分的比例（相对于已完成的IP）
                 let failPercent = 0;
                 if (completedCount > 0) {
                     failPercent = (failCount / completedCount * 100).toFixed(2);
                 }
 
-                // 设置进度条的渐变背景，红色表示失败，绿色表示成功
                 progressFill.style.background = `linear-gradient(90deg, #ef4444 0%, #ef4444 ${failPercent}%, #10b981 ${failPercent}%, #10b981 100%)`;
                 progressFill.style.width = progress + '%';
-                progressText.textContent = `${completedCount}/${total} (${progress}%) - 成功: ${successCount}, 失败: ${failCount}`;
+                const stopLabel = stopped ? ' [已提前终止]' : '';
+                progressText.textContent = `${completedCount}/${total} (${progress}%) - 成功: ${successCount}, 失败: ${failCount}${stopLabel}`;
 
-                // 每完成64个IP输出一次统计
-                if (completedCount % 64 === 0 || completedCount === total) {
-                    console.log(`[在线优选] 进度: 已完成 ${completedCount}/${total}，成功=${successCount}，失败=${failCount}`);
+                if (completedCount % 64 === 0 || completedCount === total || stopped) {
+                    console.log(`[在线优选] 进度: 已完成 ${completedCount}/${total}，成功=${successCount}，失败=${failCount}${stopLabel}`);
                 }
             };
 
-            // 测试单个IP的包装函数
-            const testIPWrapper = async (ipWithPort) => {
-                const result = await testSingleIP(ipWithPort);
-                completedCount++;
+            // Worker Pool: 维持恒定并发数
+            let queueIndex = 0;
 
-                if (result) {
-                    results.push(result);
-                    successCount++;
-                } else {
-                    failCount++;
+            const worker = async () => {
+                while (!stopped) {
+                    const idx = queueIndex++;
+                    if (idx >= ips.length) break;
+
+                    const result = await testSingleIP(ips[idx]);
+                    completedCount++;
+
+                    if (result) {
+                        results.push(result);
+                        successCount++;
+                    } else {
+                        failCount++;
+                    }
+
+                    updateProgress();
+
+                    // 检查提前终止条件
+                    if (shouldStop && shouldStop(results)) {
+                        stopped = true;
+                        console.log(`[在线优选] 提前终止: 已满足条件，停止测试`);
+                    }
                 }
-
-                updateProgress();
-                return result;
             };
 
-            // 并发控制：将IP列表分成多个批次
-            const batches = [];
-            for (let i = 0; i < ips.length; i += concurrency) {
-                batches.push(ips.slice(i, i + concurrency));
-            }
+            await Promise.all(Array.from(
+                { length: Math.min(concurrency, ips.length) },
+                () => worker()
+            ));
 
-            // 逐批次并发执行
-            for (const batch of batches) {
-                await Promise.all(batch.map(ip => testIPWrapper(ip)));
-            }
-
-            console.log(`[在线优选] 完成: 测试完成，总计=${total}，成功=${successCount}，失败=${failCount}`);
+            console.log(`[在线优选] 完成: 测试完成，总计=${total}，已测=${completedCount}，成功=${successCount}，失败=${failCount}`);
             return results;
         }
 
@@ -16048,16 +16071,16 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                 const hexIP = ipToHex(ip);
                 const testUrl = `https://${hexIP}.nip.lfree.org:${port}/cdn-cgi/trace?_t=${Date.now()}`;
 
-                // 测试3次，取后2次平均值
+                // 测试2次，第1次预热（丢弃），第2次计时
                 const times = [];
                 let resultData = null;
 
-                for (let i = 0; i < 3; i++) {
+                for (let i = 0; i < 2; i++) {
                     const start = performance.now();
                     try {
                         const response = await fetch(testUrl, {
                             method: 'GET',
-                            signal: AbortSignal.timeout(5000) // 5秒超时
+                            signal: AbortSignal.timeout(3000) // 3秒超时
                         });
 
                         if (response.ok) {
