@@ -15666,7 +15666,7 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                 currentIPLibrary = ipLibrary; // 保存当前IP库类型
 
                 // 获取IP列表（选了地区回退时测更多IP以增加命中率）
-                const maxCount = selectedRegion ? 512 : 256;
+                const maxCount = selectedRegion ? 1024 : 512;
                 console.log('[在线优选] 步骤3: 获取 IP 列表');
                 const ips = await getIPList(ipLibrary, port, maxCount);
 
@@ -16080,7 +16080,7 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                     try {
                         const response = await fetch(testUrl, {
                             method: 'GET',
-                            signal: AbortSignal.timeout(3000) // 3秒超时
+                            signal: AbortSignal.timeout(5000) // 5秒超时
                         });
 
                         if (response.ok) {
