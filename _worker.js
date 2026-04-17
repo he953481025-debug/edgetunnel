@@ -2903,7 +2903,7 @@ async function 获取地区映射(env) {
 			const res = await env.ASSETS.fetch(new Request('https://placeholder/locations'));
 			data = await res.json();
 		} else {
-			const res = await fetch('https://edt-pages.github.io/locations');
+			const res = await fetch('https://edt-pages.github.io/locations', { signal: AbortSignal.timeout(3000) });
 			data = await res.json();
 		}
 		for (const loc of data) {
@@ -2935,7 +2935,7 @@ async function 生成随机IP(request, count = 16, 指定端口 = -1, TLS = true
 	const cfname = isp?.name || 'CF官方优选';
 	const cfport = TLS ? [443, 2053, 2083, 2087, 2096, 8443] : [80, 8080, 8880, 2052, 2082, 2086, 2095];
 	let cidrList = [];
-	try { const res = await fetch(cidr_url); cidrList = res.ok ? await 整理成数组(await res.text()) : ['104.16.0.0/13'] } catch { cidrList = ['104.16.0.0/13'] }
+	try { const res = await fetch(cidr_url, { signal: AbortSignal.timeout(3000) }); cidrList = res.ok ? await 整理成数组(await res.text()) : ['104.16.0.0/13'] } catch { cidrList = ['104.16.0.0/13'] }
 
 	const generateRandomIPFromCIDR = (cidr) => {
 		const [baseIP, prefixLength] = cidr.split('/'), prefix = parseInt(prefixLength), hostBits = 32 - prefix;
