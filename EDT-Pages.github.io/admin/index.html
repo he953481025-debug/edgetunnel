@@ -15521,30 +15521,33 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
             detectionBox.innerHTML = '<div class="ip-detection-info">正在检测您的网络环境...</div>';
 
             try {
-                // 首先尝试本地路径
+                // 优先使用 /api/trace（Worker 直接用 request.cf 构造，不依赖外部服务）
+                // 回退到 /cdn-cgi/trace（Cloudflare 原生端点）
+                // 最后尝试 speed.cloudflare.com
                 let response, text;
-                try {
-                    console.log('[在线优选] 进度: 尝试使用当前域名本地路径进行检测');
-                    response = await fetch(`/cdn-cgi/trace?_t=${Date.now()}`, {
-                        signal: AbortSignal.timeout(5000), // 5秒超时
-                        cache: 'no-store' // 禁用所有缓存
-                    });
-                    text = await response.text();
-                    console.log('[在线优选] 成功: 本地路径检测通过（使用本地域名）');
-                    // 保存使用的检测域名供locations使用
-                    window.detectDomain = window.location.origin;
-                } catch (primaryError) {
-                    console.warn('[在线优选] 本地路径检测失败，尝试使用主链接 speed.cloudflare.com...', primaryError);
-                    response = await fetch(`https://speed.cloudflare.com/cdn-cgi/trace?_t=${Date.now()}`, {
-                        signal: AbortSignal.timeout(5000), // 5秒超时
-                        cache: 'no-store' // 禁用所有缓存
-                    });
-                    text = await response.text();
-                    console.log('[在线优选] 成功: 主链接检测通过');
-                    // 保存使用的检测域名供locations使用
-                    window.detectDomain = 'https://speed.cloudflare.com';
+                const traceEndpoints = [
+                    { url: `/api/trace?_t=${Date.now()}`, label: 'Worker API' },
+                    { url: `/cdn-cgi/trace?_t=${Date.now()}`, label: '本地 cdn-cgi' },
+                    { url: `https://speed.cloudflare.com/cdn-cgi/trace?_t=${Date.now()}`, label: 'speed.cloudflare.com' }
+                ];
+                for (const endpoint of traceEndpoints) {
+                    try {
+                        console.log(`[在线优选] 进度: 尝试 ${endpoint.label} 检测`);
+                        response = await fetch(endpoint.url, {
+                            signal: AbortSignal.timeout(5000),
+                            cache: 'no-store'
+                        });
+                        text = await response.text();
+                        if (text && text.includes('colo=')) {
+                            console.log(`[在线优选] 成功: ${endpoint.label} 检测通过`);
+                            window.detectDomain = endpoint.url.startsWith('http') ? 'https://speed.cloudflare.com' : window.location.origin;
+                            break;
+                        }
+                    } catch (e) {
+                        console.warn(`[在线优选] ${endpoint.label} 检测失败:`, e.message);
+                    }
                 }
-                //console.log('[在线优选] 调试: 检测响应:\n' + text);
+                if (!text || !text.includes('colo=')) throw new Error('所有检测端点均不可用');
 
                 // 解析响应
                 const lines = text.trim().split('\n');
@@ -15567,9 +15570,9 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                 if (loc !== 'CN') {
                     console.warn('[在线优选] 警告: 检测到非CN地区访问，可能处于代理/VPN环境');
                     html += `<div class="ip-detection-warning" style="font-size: 16px; font-weight: 700; color: #dc2626; margin-top: 12px; line-height: 1.6;">⚠️ 检测到您当前很可能处于代理/VPN环境中！请确保处于直连网络环境下再进行在线优选，否则优选测试结果将因为不准确变得毫无意义！</div>`;
-                    // 非CN地区，禁用开始优选按钮
-                    btnStart.disabled = true;
-                    btnStart.textContent = '仅限CN地区';
+                    // 非CN地区，仍然允许地区优选（服务端生成），只是警告本地测速不准
+                    btnStart.disabled = false;
+                    btnStart.textContent = '开始优选';
                 } else {
                     // CN地区，启用开始优选按钮
                     btnStart.disabled = false;
@@ -15586,10 +15589,10 @@ vless://7b102311-43fd-4e8f-977e-8090623c101d@edt-pages.github.io:443?security=tl
                 }
             } catch (error) {
                 console.error('[在线优选] 检测失败:', error);
-                detectionBox.innerHTML = '<div class="ip-detection-info">⚠️ 无法访问 https://speed.cloudflare.com/cdn-cgi/trace 检测网络环境，请检查网络连接或关闭代理</div>';
-                // 检测失败，禁用按钮
-                btnStart.disabled = true;
-                btnStart.textContent = '检测失败';
+                detectionBox.innerHTML = '<div class="ip-detection-info">⚠️ 网络环境检测失败，但您仍可选择地区进行优选</div>';
+                // 检测失败也不禁用按钮，允许用户使用地区优选功能
+                btnStart.disabled = false;
+                btnStart.textContent = '开始优选';
             }
         }
 

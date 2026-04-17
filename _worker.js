@@ -416,7 +416,7 @@ export default {
 						}
 						return new Response(订阅内容, { status: 200, headers: responseHeaders });
 					}
-				} else if (访问路径 === 'cdn-cgi/trace') {// 直接用 request.cf 构造 trace 响应，避免依赖 speed.cloudflare.com
+				} else if (访问路径 === 'api/trace') {// 直接用 request.cf 构造 trace 响应，避免依赖 speed.cloudflare.com
 					const cf = request.cf || {};
 					const traceLines = [
 						`fl=${cf.clientTcpRtt || '0'}`,
