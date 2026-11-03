@@ -38,3 +38,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 log/
+# 扫描脚本生成的结果，不提交
+tools/scan-colo-*.csv
+tools/cf-prefixes.txt
